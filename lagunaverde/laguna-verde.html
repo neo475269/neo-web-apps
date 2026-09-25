@@ -1,0 +1,649 @@
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Laguna Verde 3D – Hung Hom Waterfront (corrected orientation)</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:"Segoe UI",Arial,sans-serif}
+  #ui{position:absolute;top:12px;left:12px;width:270px;background:rgba(8,18,26,.78);color:#e8f1f2;
+      padding:12px 14px;border-radius:10px;font-size:13px;z-index:10;box-shadow:0 4px 18px rgba(0,0,0,.4)}
+  #ui h1{font-size:15px;margin:0 0 8px}
+  #ui label{display:block;margin:8px 0 2px}
+  #ui input[type=range]{width:100%}
+  #ui .row{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  #ui button{flex:1 1 auto;background:#1f5d61;color:#fff;border:0;border-radius:6px;padding:5px 7px;cursor:pointer;font-size:12px}
+  #ui button:hover{background:#2c7d82}
+  #ui button.on{background:#c9892b}
+  #ui small{opacity:.75}
+  #labels{position:absolute;inset:0;pointer-events:none;z-index:5}
+  .lbl{position:absolute;transform:translate(-50%,-100%);color:#fff;font-size:11px;line-height:1.2;text-align:center;
+       white-space:nowrap;text-shadow:0 0 3px #000,0 0 6px #000}
+  .lbl.big{font-size:14px;font-weight:600}
+  .lbl.water{color:#bfe9ff;font-style:italic;font-size:14px}
+  #compass{position:absolute;right:18px;bottom:18px;width:78px;height:78px;border-radius:50%;
+       background:rgba(8,18,26,.7);z-index:10;border:2px solid rgba(255,255,255,.35)}
+  #needle{position:absolute;left:50%;top:50%;width:0;height:0}
+  #needle div{position:absolute;left:-7px;top:-34px;width:14px;height:34px;text-align:center;color:#ff5a4a;font-weight:700;font-size:14px}
+  #needle div::after{content:"";position:absolute;left:5px;top:16px;width:4px;height:18px;background:#ff5a4a;border-radius:2px}
+</style>
+</head>
+<body>
+<div id="ui">
+  <h1>Laguna Verde 海逸豪園 – Hung Hom</h1>
+  <label>Time of day: <b id="tval">12:00</b></label>
+  <input id="time" type="range" min="0" max="24" step="0.01" value="15.5">
+  <label>Day speed (hours / second): <b id="sval">0.20</b></label>
+  <input id="speed" type="range" min="0" max="2" step="0.01" value="0.2">
+  <label>Wave height: <b id="wval">1.00</b></label>
+  <input id="wave" type="range" min="0" max="2" step="0.01" value="1">
+  <div class="row">
+    <button data-t="6.2">Sunrise</button><button data-t="12">Noon</button>
+    <button data-t="18.2">Sunset</button><button data-t="22">Night</button>
+  </div>
+  <div class="row">
+    <button id="play" class="on">Pause</button>
+    <button id="lbls" class="on">Labels</button>
+    <button id="orbit">Auto-orbit</button>
+  </div>
+  <div class="row">
+    <button id="photo">Photo view</button>
+    <button id="top">Top view (N up)</button>
+  </div>
+  <small>Drag = rotate · Right-drag = pan · Wheel = zoom</small>
+</div>
+<div id="labels"></div>
+<div id="compass"><div id="needle"><div>N</div></div></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* =========================================================================
+   COORDINATE SYSTEM (corrected / mirrored version)
+   North = -Z, South = +Z, East = +X, West = -X.
+   Harbour lies to the WEST (x < -138) and SOUTH (z > 138) of Laguna Verde.
+   Whampoa Garden & Harbourfront Landmark are to the NORTH, Hutchison Park
+   to the NORTH-EAST, and the domed clubhouse on the EAST side.
+   The default "Photo view" looks WEST from above the clubhouse, as in the map:
+   harbour on the LEFT and FAR side, Hutchison Park bottom-right, Whampoa right.
+   Plan helper P(u,v): u = map-right (north), v = map-down (east).
+   ========================================================================= */
+const S = 30, FH = 3.1;
+const P = (u, v) => ({ x: v * S, z: -u * S });
+const SHORE_W = -138, SHORE_S = 138, LAND_Y = 6, PODIUM_Y = 16;
+
+/* ---------- renderer / scene / camera ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0xa9cfee, 0.00028);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, 12000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.maxPolarAngle = 1.52;
+controls.minDistance = 40;
+controls.maxDistance = 3500;
+controls.autoRotateSpeed = 0.6;
+function photoView() { camera.position.set(560, 360, -30); controls.target.set(-20, 50, 0); controls.update(); }
+function topView() { camera.position.set(40, 1300, 1); controls.target.set(40, 0, 0); controls.update(); }
+photoView();
+
+const root = new THREE.Group();
+scene.add(root);
+
+/* ---------- helpers ---------- */
+const nightMats = [];
+function mesh(geo, mat, x = 0, y = 0, z = 0, parent = root, shadow = true) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.castShadow = shadow; m.receiveShadow = true;
+  parent.add(m); return m;
+}
+function box(w, h, d, mat, x, y, z, parent = root, shadow = true) {   // y = bottom
+  return mesh(new THREE.BoxGeometry(w, h, d), mat, x, y + h / 2, z, parent, shadow);
+}
+const rnd = (a, b) => a + Math.random() * (b - a);
+function std(color, o = {}) { return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.85, metalness: 0 }, o)); }
+
+/* ---------- procedural façade textures (8 bays x 16 floors per tile) ---------- */
+function facadeTiles(kind) {
+  const W = 256, H = 512, cw = 32, ch = 32;
+  const c1 = document.createElement('canvas'); c1.width = W; c1.height = H;
+  const c2 = document.createElement('canvas'); c2.width = W; c2.height = H;
+  const g = c1.getContext('2d'), e = c2.getContext('2d');
+  e.fillStyle = '#000'; e.fillRect(0, 0, W, H);
+  const warm = ['#ffd9a0', '#ffc47a', '#fff1d6', '#ffe2b0', '#d8ecff'];
+  for (let f = 0; f < 16; f++) for (let b = 0; b < 8; b++) {
+    const x = b * cw, y = f * ch;
+    if (kind === 'teal') {
+      const k = rnd(-10, 10);
+      g.fillStyle = `rgb(${52 + k},${118 + k},${120 + k})`; g.fillRect(x, y, cw, ch);
+      g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(x + 3, y + 8, 10, 22);
+      g.fillStyle = '#e9eee8'; g.fillRect(x, y, cw, 6);
+      g.fillStyle = '#9fc2bf'; g.fillRect(x, y, 2, ch);
+    } else if (kind === 'white') {
+      g.fillStyle = '#ece8df'; g.fillRect(x, y, cw, ch);
+      g.fillStyle = '#6f8189'; g.fillRect(x + 6, y + 9, 20, 15);
+    } else {
+      const k = rnd(-6, 6);
+      g.fillStyle = `rgb(${38 + k},${56 + k},${70 + k})`; g.fillRect(x, y, cw, ch);
+      g.fillStyle = '#566a78'; g.fillRect(x, y, cw, 3); g.fillRect(x, y, 2, ch);
+    }
+    if (Math.random() < (kind === 'dark' ? 0.35 : 0.45)) {
+      e.fillStyle = warm[(Math.random() * warm.length) | 0];
+      e.globalAlpha = rnd(0.55, 1);
+      if (kind === 'white') e.fillRect(x + 6, y + 9, 20, 15); else e.fillRect(x + 3, y + 7, cw - 5, ch - 8);
+      e.globalAlpha = 1;
+    }
+  }
+  const t1 = new THREE.CanvasTexture(c1), t2 = new THREE.CanvasTexture(c2);
+  t1.colorSpace = t2.colorSpace = THREE.SRGBColorSpace;
+  t1.anisotropy = t2.anisotropy = 8;
+  return { map: t1, emi: t2 };
+}
+const TILES = { teal: facadeTiles('teal'), white: facadeTiles('white'), dark: facadeTiles('dark') };
+function facadeMat(kind, bays, floors, o = {}) {
+  const T = TILES[kind];
+  const map = T.map.clone(), emi = T.emi.clone();
+  for (const t of [map, emi]) {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(bays / 8, floors / 16);
+    t.offset.set(Math.random(), Math.random());
+    t.needsUpdate = true;
+  }
+  const m = new THREE.MeshStandardMaterial(Object.assign({
+    map, emissiveMap: emi, emissive: 0xffffff, emissiveIntensity: 0,
+    roughness: kind === 'white' ? 0.8 : 0.35, metalness: kind === 'white' ? 0 : 0.25
+  }, o));
+  nightMats.push(m); return m;
+}
+
+/* ---------- shared materials ---------- */
+const M = {
+  land: std(0x8d8a82), prom: std(0xcdb89a), wall: std(0x77736b), road: std(0x3a3c40, { roughness: 0.95 }),
+  podium: std(0xd4c6a6), stone: std(0xd9c9a7), roof: std(0xb8b8b1), roofDk: std(0x8e8f8a),
+  green: std(0x5f8f4c), grass: std(0x6d9a55), plaza: std(0x4a4d4f),
+  dome: std(0x5e8e88, { roughness: 0.5, metalness: 0.2 }), glassRoof: std(0x9fb6c4, { roughness: 0.15, metalness: 0.6 }),
+  redRoof: std(0xb4553c), hill: std(0x2f4a33, { roughness: 1 }), hill2: std(0x3c5a3c, { roughness: 1 }),
+  pool: new THREE.MeshStandardMaterial({ color: 0x2aa7d8, roughness: 0.1, metalness: 0.1, emissive: 0x1fb6e0, emissiveIntensity: 0 }),
+  lamp: new THREE.MeshBasicMaterial({ color: 0x555555 }), pole: std(0x444444),
+};
+
+/* =========================================================================
+   LAND, PROMENADES, ROADS
+   ========================================================================= */
+box(1240, 16, 1440, M.land, (SHORE_W + 1102) / 2, LAND_Y - 16, (SHORE_S - 1302) / 2);        // Kowloon side
+box(3600, 16, 1200, M.land, -200, 4 - 16, 1500);                                              // HK Island shore (south)
+box(1400, 16, 1500, M.land, -1300, 4 - 16, -850);                                             // TST East (west)
+box(4, 8, 1440, M.wall, SHORE_W + 2, -2, (SHORE_S - 1302) / 2);
+box(1240, 8, 4, M.wall, (SHORE_W + 1102) / 2, -2, SHORE_S - 2);
+box(12, 0.4, 1440, M.prom, SHORE_W + 6, LAND_Y, (SHORE_S - 1302) / 2);                        // west promenade
+box(1240, 0.4, 12, M.prom, (SHORE_W + 1102) / 2, LAND_Y, SHORE_S - 6);                        // south promenade
+box(16, 0.3, 1400, M.road, 258, LAND_Y, -560);
+box(1100, 0.3, 14, M.road, 500, LAND_Y, -420);
+box(14, 0.3, 240, M.road, 172, LAND_Y, -12);
+box(14, 3, 70, M.prom, 200, 3, SHORE_S + 35);                                                 // pier
+box(12, 6, 10, M.stone, 200, 6, SHORE_S + 62);
+
+/* ---------- promenade lamps (instanced) ---------- */
+const lampPts = [];
+for (let z = -700; z <= 130; z += 20) lampPts.push([SHORE_W + 3, z]);
+for (let x = -130; x <= 700; x += 20) lampPts.push([x, SHORE_S - 3]);
+const lampHead = new THREE.InstancedMesh(new THREE.SphereGeometry(0.9, 8, 6), M.lamp, lampPts.length);
+const lampPole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.2, 6, 5), M.pole, lampPts.length);
+const dummy = new THREE.Object3D();
+lampPts.forEach(([x, z], i) => {
+  dummy.position.set(x, LAND_Y + 6.5, z); dummy.updateMatrix(); lampHead.setMatrixAt(i, dummy.matrix);
+  dummy.position.set(x, LAND_Y + 3, z); dummy.updateMatrix(); lampPole.setMatrixAt(i, dummy.matrix);
+});
+root.add(lampHead, lampPole);
+
+/* ---------- trees ---------- */
+const treeData = [];
+function tree(x, y, z, s) { treeData.push([x, y, z, s]); }
+function inRect(x, z, x0, x1, z0, z1) { return x >= x0 && x <= x1 && z >= z0 && z <= z1; }
+
+/* =========================================================================
+   LAGUNA VERDE TOWERS (layout follows laguna 2.png)
+   ========================================================================= */
+const TOWERS = [
+  // name,  u,    v,   floors, roof type
+  ['16', -2.0, -3.1, 45, 'round'], ['17', -0.8, -3.3, 45, 'round'], ['18', 0.5, -3.4, 45, 'round'],
+  ['19',  2.3, -3.3, 44, 'crown'], ['20',  3.2, -2.3, 34, 'flat'],  ['21', 0.7, -1.8, 36, 'flat'],
+  ['22',  1.9, -1.5, 36, 'flat'],  ['15', -3.3, -1.8, 30, 'flat'],  ['15A', -3.5, -0.9, 30, 'flat'],
+  ['13', -3.6,  0.1, 32, 'flat'],  ['12', -2.2,  0.1, 33, 'flat'],  ['11', -0.7, -1.0, 33, 'flat'],
+  ['10', -0.9,  0.0, 34, 'flat'],  ['9',  -0.6,  1.0, 34, 'flat'],  ['8',  -2.8,  1.8, 34, 'flat'],
+  ['7',  -0.8,  2.1, 35, 'flat'],  ['6',   0.9,  1.9, 35, 'flat'],  ['5',   1.2,  0.5, 36, 'flat'],
+  ['3',   2.6, -0.4, 38, 'flat'],  ['2',   3.6, -0.9, 36, 'flat'],  ['1',   3.4,  0.6, 38, 'flat'],
+];
+const towerPos = {};
+const labelDefs = [];
+
+function buildTower([name, u, v, floors, type]) {
+  const { x, z } = P(u, v);
+  const h = floors * FH;
+  const g = new THREE.Group(); g.position.set(x, PODIUM_Y, z); root.add(g);
+  const coreMat = facadeMat('teal', 5, floors), lobeMat = facadeMat('teal', 11, floors);
+  box(24, 12, 24, M.stone, 0, 0, 0, g);
+  box(18, h, 18, coreMat, 0, 0, 0, g);
+  for (const [dx, dz] of [[7, 7], [7, -7], [-7, 7], [-7, -7]]) {
+    mesh(new THREE.CylinderGeometry(7.2, 7.2, h, 28, 1, true), lobeMat, dx, h / 2, dz, g);
+    mesh(new THREE.CylinderGeometry(7.7, 7.7, 1.6, 28), M.roof, dx, h + 0.8, dz, g);
+  }
+  box(20, 1.6, 20, M.roof, 0, h, 0, g);
+  box(10, 5, 10, M.roofDk, 0, h + 1.6, 0, g);
+  if (type === 'round') {
+    mesh(new THREE.CylinderGeometry(6, 6.5, 9, 28), M.roof, 0, h + 6, 0, g);
+    mesh(new THREE.CylinderGeometry(7.2, 7.2, 1.2, 28), M.roofDk, 0, h + 11, 0, g);
+  } else if (type === 'crown') {
+    for (const [dx, dz] of [[7, 7], [7, -7], [-7, 7], [-7, -7]]) box(4, 7, 4, M.roof, dx, h + 1.6, dz, g);
+  }
+  towerPos[name] = { x, z, h };
+  labelDefs.push({ html: `Laguna Verde Block ${name}<br>海逸豪園${name}座`, x, y: PODIUM_Y + h + 16, z });
+}
+TOWERS.forEach(buildTower);
+
+function connect(a, b) {
+  const A = towerPos[a], B = towerPos[b];
+  const len = Math.hypot(B.x - A.x, B.z - A.z), h = Math.min(A.h, B.h) * 0.92;
+  const m = mesh(new THREE.BoxGeometry(len, h, 12), facadeMat('teal', Math.max(2, len / 5), h / FH),
+                 (A.x + B.x) / 2, PODIUM_Y + h / 2, (A.z + B.z) / 2);
+  m.rotation.y = -Math.atan2(B.z - A.z, B.x - A.x);
+}
+[['15', '15A'], ['15A', '13'], ['16', '17'], ['17', '18'], ['8', '7'], ['7', '6'], ['12', '13']].forEach(p => connect(...p));
+
+/* ---------- estate podium & landscaping ---------- */
+const PX0 = -126, PX1 = 96, PZ0 = -126, PZ1 = 126;
+box(PX1 - PX0, PODIUM_Y - LAND_Y, PZ1 - PZ0, M.podium, (PX0 + PX1) / 2, LAND_Y, (PZ0 + PZ1) / 2);
+box(PX1 - PX0 - 4, 0.4, PZ1 - PZ0 - 4, M.grass, (PX0 + PX1) / 2, PODIUM_Y, (PZ0 + PZ1) / 2, root, false);
+box(40, 0.6, 30, M.plaza, -40, PODIUM_Y, 15, root, false);
+box(26, 0.8, 12, M.pool, 30, PODIUM_Y, 60, root, false);
+for (let i = 0; i < 400; i++) {
+  const x = rnd(PX0 + 5, PX1 - 5), z = rnd(PZ0 + 5, PZ1 - 5);
+  if (Object.values(towerPos).some(t => Math.hypot(t.x - x, t.z - z) < 21)) continue;
+  if (inRect(x, z, -62, -18, -2, 32) || inRect(x, z, 14, 46, 52, 68)) continue;
+  tree(x, PODIUM_Y, z, rnd(2.2, 3.6));
+}
+
+/* =========================================================================
+   EAST CLUBHOUSE (green domes, rotunda, glass roof, tennis courts) + pool
+   ========================================================================= */
+const CX0 = 96, CX1 = 162, CZ0 = -84, CZ1 = 110;
+box(CX1 - CX0, 12, CZ1 - CZ0, M.stone, (CX0 + CX1) / 2, LAND_Y, (CZ0 + CZ1) / 2);
+const CT = LAND_Y + 12;
+mesh(new THREE.CylinderGeometry(20, 20, 5, 40), M.stone, 132, CT + 2.5, 18);
+mesh(new THREE.CylinderGeometry(12, 12, 4, 40), M.roof, 132, CT + 7, 18);
+mesh(new THREE.TorusGeometry(16, 0.8, 8, 48), M.roofDk, 132, CT + 5.2, 18).rotation.x = Math.PI / 2;
+box(26, 3, 22, M.glassRoof, 138, CT, 50);
+for (const [dx, dz] of [[117, 87], [114, -57]]) {
+  mesh(new THREE.CylinderGeometry(8.5, 8.5, 8, 28), M.stone, dx, CT + 4, dz);
+  mesh(new THREE.SphereGeometry(8.5, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), M.dome, dx, CT + 8, dz);
+  mesh(new THREE.CylinderGeometry(0.4, 0.4, 4, 6), M.roofDk, dx, CT + 18, dz);
+}
+{
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256; const g = c.getContext('2d');
+  g.fillStyle = '#3f8a5a'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#2f7048'; g.fillRect(20, 16, 216, 100); g.fillRect(20, 140, 216, 100);
+  g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(20, 16, 216, 100); g.strokeRect(20, 140, 216, 100);
+  g.beginPath(); g.moveTo(128, 16); g.lineTo(128, 116); g.moveTo(128, 140); g.lineTo(128, 240); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const court = mesh(new THREE.PlaneGeometry(40, 42), std(0xffffff, { map: t }), 136, CT + 0.05, -27, root, false);
+  court.rotation.x = -Math.PI / 2;
+}
+box(55, 0.8, 18, M.pool, 128, LAND_Y, 121, root, false);
+labelDefs.push({ html: 'Clubhouse', x: 132, y: CT + 22, z: 18 });
+
+/* =========================================================================
+   NORTH: Kindergarten, Sub-station, Whampoa Garden, Harbourfront Landmark
+   ========================================================================= */
+box(34, 10, 20, M.stone, -80, LAND_Y, -150); box(36, 0.6, 22, M.roof, -80, LAND_Y + 10, -150);
+labelDefs.push({ html: 'Anfield International Kindergarten<br>安菲爾國際幼稚園', x: -80, y: 40, z: -150 });
+box(22, 0.8, 14, M.pool, -112, LAND_Y, -160, root, false);
+labelDefs.push({ html: 'Hung Hom Promenade<br>紅磡海濱', x: -128, y: 30, z: -175, cls: 'big' });
+box(34, 22, 28, std(0xb49c80), 9, LAND_Y, -156);
+labelDefs.push({ html: 'Electric Sub-station<br>電力站', x: 9, y: 50, z: -156 });
+
+const wMats = [facadeMat('white', 5, 16), facadeMat('white', 5, 18)];
+function whampoaBlock(x, z, floors) {
+  const h = floors * FH, m = wMats[floors > 16 ? 1 : 0];
+  box(24, h, 9, m, x, LAND_Y + 6, z); box(9, h, 24, m, x, LAND_Y + 6, z);
+  box(26, 1.2, 10, M.roof, x, LAND_Y + 6 + h, z); box(10, 1.2, 26, M.roof, x, LAND_Y + 6 + h, z);
+}
+box(150, 6, 180, M.stone, -45, LAND_Y, -265);
+for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) whampoaBlock(-105 + i * 38, -190 - j * 38, 16 + (j % 2) * 2);
+for (let i = 0; i < 5; i++) for (let j = 0; j < 2; j++) whampoaBlock(60 + i * 40, -340 - j * 40, 16);
+labelDefs.push({ html: 'Whampoa Garden Site 10<br>黃埔花園', x: -60, y: 90, z: -250 });
+labelDefs.push({ html: 'Whampoa Garden Site 12<br>黃埔花園十二期', x: 120, y: 90, z: -360 });
+
+const dMat = facadeMat('dark', 5, 65);
+for (let i = 0; i < 3; i++) {
+  const z = -410 - i * 34, h = (60 + i * 3) * FH;
+  box(22, h, 22, dMat, -105, LAND_Y, z); box(14, 12, 14, M.roofDk, -105, LAND_Y + h, z);
+}
+labelDefs.push({ html: 'Harbourfront Landmark<br>海濱南岸', x: -105, y: 240, z: -444 });
+
+/* =========================================================================
+   HUTCHISON PARK (north-east)
+   ========================================================================= */
+box(210, 0.6, 160, M.green, 140, LAND_Y, -220, root, false);
+box(80, 0.6, 240, M.green, 205, LAND_Y, -20, root, false);
+for (let x = 36; x <= 245; x += 6.5) for (let z = -300; z <= 100; z += 6.5) {
+  const X = x + rnd(-2.5, 2.5), Z = z + rnd(-2.5, 2.5);
+  const inPark = inRect(X, Z, 36, 245, -300, -140) || inRect(X, Z, 168, 245, -140, 100);
+  if (!inPark || inRect(X, Z, 100, 140, -190, -150) || Math.abs(X - 258) < 12) continue;
+  tree(X, LAND_Y + rnd(0, 6), Z, rnd(3.5, 5.5));
+}
+box(24, 5, 18, std(0xe6dccb), 120, LAND_Y, -170);
+const pav = mesh(new THREE.ConeGeometry(17, 7, 4), M.redRoof, 120, LAND_Y + 8.5, -170); pav.rotation.y = Math.PI / 4;
+box(30, 0.5, 14, M.pool, 150, LAND_Y + 0.3, -205, root, false);
+labelDefs.push({ html: 'Hutchison Park<br>和黃公園', x: 170, y: 40, z: -230, cls: 'big' });
+for (let z = -680; z <= 130; z += 16) if (z < -140 || z > 126) tree(SHORE_W + 13, LAND_Y, z, rnd(2, 3));
+
+/* generic Hung Hom / Kowloon buildings */
+const cityMat = facadeMat('white', 3, 20, { color: 0xdad6cc });
+const city = [];
+for (let x = 290; x < 1080; x += 46) for (let z = -1250; z < 110; z += 46) city.push([x + rnd(-6, 6), z + rnd(-6, 6), rnd(30, 110)]);
+for (let x = -110; x < 280; x += 46) for (let z = -1250; z < -520; z += 46) city.push([x + rnd(-6, 6), z + rnd(-6, 6), rnd(30, 120)]);
+function instBoxes(list, mat, yBase) {
+  const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, list.length);
+  list.forEach(([x, z, h, w = 26], i) => { dummy.position.set(x, yBase + h / 2, z); dummy.scale.set(w, h, w); dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); });
+  im.castShadow = im.receiveShadow = true; root.add(im); return im;
+}
+instBoxes(city, cityMat, LAND_Y);
+
+/* across the harbour: Hong Kong Island (south) & TST East (west) */
+const islandMat = facadeMat('dark', 4, 40, { color: 0x9aa4ad });
+const island = [];
+for (let x = -1800; x < 1300; x += 38) for (let r = 0; r < 4; r++) {
+  let h = rnd(40, 170); if (Math.random() < 0.08) h = rnd(220, 330);
+  island.push([x + rnd(-10, 10), 960 + r * 45 + rnd(-8, 8), h, rnd(20, 34)]);
+}
+island.push([-950, 980, 415, 40], [-700, 1010, 370, 36]);
+instBoxes(island, islandMat, 4);
+const tst = [];
+for (let x = -1900; x < -620; x += 44) for (let z = -1500; z < -120; z += 44) tst.push([x + rnd(-8, 8), z + rnd(-8, 8), rnd(30, 150), rnd(20, 32)]);
+tst.push([-1500, -700, 480, 50]);
+instBoxes(tst, islandMat, 4);
+for (let i = 0; i < 12; i++) { const s = mesh(new THREE.SphereGeometry(1, 20, 12), i % 2 ? M.hill : M.hill2, -1900 + i * 300, 0, 1500 + rnd(0, 200), root, false); s.scale.set(rnd(260, 420), rnd(250, 480), 260); }
+for (let i = 0; i < 10; i++) { const s = mesh(new THREE.SphereGeometry(1, 20, 12), i % 2 ? M.hill : M.hill2, -1800 + i * 330, 0, -1420 - rnd(0, 150), root, false); s.scale.set(rnd(260, 420), rnd(150, 300), 240); }
+labelDefs.push({ html: 'Victoria Harbour<br>維多利亞港', x: -420, y: 12, z: 420, cls: 'water' });
+labelDefs.push({ html: 'Hung Hom Bay', x: -380, y: 12, z: -380, cls: 'water' });
+labelDefs.push({ html: 'Laguna Verde Promenade', x: 20, y: 22, z: 136, cls: 'big' });
+
+/* ---------- build tree instances ---------- */
+{
+  const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), std(0xffffff, { roughness: 0.95 }), treeData.length);
+  const col = new THREE.Color();
+  treeData.forEach(([x, y, z, s], i) => {
+    dummy.position.set(x, y + s * 0.9, z); dummy.scale.set(s, s * rnd(0.8, 1.1), s); dummy.rotation.set(0, rnd(0, 6), 0); dummy.updateMatrix();
+    im.setMatrixAt(i, dummy.matrix);
+    im.setColorAt(i, col.setHSL(rnd(0.24, 0.32), rnd(0.35, 0.55), rnd(0.18, 0.30)));
+  });
+  dummy.rotation.set(0, 0, 0);
+  im.castShadow = im.receiveShadow = true; root.add(im);
+}
+
+/* =========================================================================
+   OCEAN – waves, fresnel reflection, sun glint, foam, night light streaks
+   ========================================================================= */
+const WAVES = [[1, 0.3, 0.045, 1.2, 1.1], [-0.4, 1, 0.07, 0.7, 1.4], [0.7, -0.7, 0.12, 0.35, 1.9]].map(
+  ([dx, dz, k, a, s]) => { const l = Math.hypot(dx, dz); return [dx / l, dz / l, k, a, s]; });
+function waveAt(x, z, t, amp) {
+  let h = 0, gx = 0, gz = 0;
+  for (const [dx, dz, k, a, s] of WAVES) { const ph = k * (dx * x + dz * z) + s * t; h += a * Math.sin(ph); gx += a * k * dx * Math.cos(ph); gz += a * k * dz * Math.cos(ph); }
+  return { h: h * amp, gx: gx * amp, gz: gz * amp };
+}
+const waterU = {
+  uTime: { value: 0 }, uAmp: { value: 1 }, uSunDir: { value: new THREE.Vector3() }, uMoonDir: { value: new THREE.Vector3() },
+  uSunColor: { value: new THREE.Color() }, uSunI: { value: 1 }, uNight: { value: 0 }, uLight: { value: 1 },
+  uSkyTop: { value: new THREE.Color() }, uSkyHor: { value: new THREE.Color() }, uDeep: { value: new THREE.Color(0x0f5a55) },
+  uFogColor: { value: new THREE.Color() }, uFogDensity: { value: 0.00028 },
+};
+const waveGLSL = WAVES.map(([dx, dz, k, a, s]) =>
+  `W(vec2(${dx.toFixed(4)},${dz.toFixed(4)}),${k.toFixed(4)},${a.toFixed(4)},${s.toFixed(4)});`).join('\n');
+const waterMat = new THREE.ShaderMaterial({
+  uniforms: waterU,
+  vertexShader: `
+    uniform float uTime, uAmp; varying vec3 vW; varying vec3 vN;
+    float h, gx, gz; vec2 p;
+    void W(vec2 d, float k, float a, float s){ float ph=k*dot(d,p)+s*uTime; h+=a*sin(ph); gx+=a*k*d.x*cos(ph); gz+=a*k*d.y*cos(ph); }
+    void main(){
+      vec4 w = modelMatrix*vec4(position,1.0); p = w.xz; h=0.; gx=0.; gz=0.;
+      ${waveGLSL}
+      w.y += h*uAmp; vW = w.xyz; vN = normalize(vec3(-gx*uAmp,1.0,-gz*uAmp));
+      gl_Position = projectionMatrix*viewMatrix*w;
+    }`,
+  fragmentShader: `
+    uniform float uTime, uAmp, uSunI, uNight, uLight, uFogDensity;
+    uniform vec3 uSunDir, uMoonDir, uSunColor, uSkyTop, uSkyHor, uDeep, uFogColor;
+    varying vec3 vW; varying vec3 vN;
+    float streak(float along, float d, float seed, vec3 n){
+      if(d>1e4) return 0.;
+      float cell=floor(along/7.0); float r=fract(sin(cell*12.9898+seed)*43758.5453);
+      float on=step(0.42,r); float w=exp(-d/(40.0+r*90.0));
+      float fl=0.55+0.45*sin(d*0.35+uTime*2.0+n.x*25.0+r*6.0);
+      return on*w*fl;
+    }
+    void main(){
+      vec2 p=vW.xz; float dist=length(cameraPosition-vW);
+      float gx=0., gz=0.;
+      vec4 K=vec4(0.5,0.83,1.3,2.1); vec4 A=vec4(0.10,0.06,0.035,0.02);
+      vec2 D0=vec2(0.8,0.6), D1=vec2(-0.6,0.8), D2=vec2(0.2,-1.0), D3=vec2(-0.9,-0.4);
+      float f=exp(-dist/900.0)*(0.3+0.7*uAmp);
+      float c0=cos(K.x*dot(D0,p)+uTime*2.3), c1=cos(K.y*dot(D1,p)+uTime*2.9), c2=cos(K.z*dot(D2,p)+uTime*3.6), c3=cos(K.w*dot(D3,p)+uTime*4.4);
+      gx=(A.x*K.x*D0.x*c0+A.y*K.y*D1.x*c1+A.z*K.z*D2.x*c2+A.w*K.w*D3.x*c3)*f;
+      gz=(A.x*K.x*D0.y*c0+A.y*K.y*D1.y*c1+A.z*K.z*D2.y*c2+A.w*K.w*D3.y*c3)*f;
+      vec3 n=normalize(vN+vec3(-gx,0.,-gz));
+      vec3 V=normalize(cameraPosition-vW);
+      float fres=0.02+0.98*pow(1.0-max(dot(n,V),0.0),5.0);
+      vec3 R=reflect(-V,n); R.y=abs(R.y);
+      vec3 sky=mix(uSkyHor,uSkyTop,pow(clamp(R.y,0.,1.),0.5));
+      vec3 deep=uDeep*(0.12+0.88*uLight);
+      vec3 col=mix(deep,sky,clamp(fres,0.,1.)*0.8);
+      float sd=max(dot(R,uSunDir),0.);
+      col+=uSunColor*(pow(sd,350.0)*6.0+pow(sd,40.0)*0.15)*uSunI;
+      col+=vec3(0.8,0.85,1.0)*pow(max(dot(R,uMoonDir),0.),500.0)*uNight*1.6;
+      float dW = vW.x < ${SHORE_W.toFixed(1)} ? (${SHORE_W.toFixed(1)} - vW.x) : 1e5;
+      float dS = vW.z > ${SHORE_S.toFixed(1)} && vW.x > ${SHORE_W.toFixed(1)} ? (vW.z - ${SHORE_S.toFixed(1)}) : 1e5;
+      float dI = vW.z < 900.0 ? (900.0 - vW.z) : 1e5;
+      float dK = (vW.z < -120.0 && vW.x > -600.0) ? (vW.x + 600.0) : 1e5;
+      vec3 lights = vec3(1.0,0.75,0.45)*(streak(vW.z,dW,1.0,n)+streak(vW.x,dS,2.0,n))
+                  + vec3(0.9,0.85,1.0)*streak(vW.x,dI,3.0,n)*0.9
+                  + vec3(1.0,0.8,0.6)*streak(vW.z,dK,4.0,n)*0.6;
+      col += lights*uNight;
+      float dm=min(min(dW,dS),min(dI,dK));
+      col += vec3(0.85)*exp(-dm/3.0)*0.3*(0.5+0.5*sin(uTime*2.0+dm*0.8))*(0.2+0.8*uLight);
+      float fg=1.0-exp(-uFogDensity*uFogDensity*dist*dist);
+      col=mix(col,uFogColor,fg);
+      gl_FragColor=vec4(col,1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+});
+const water = new THREE.Mesh(new THREE.PlaneGeometry(5200, 5200, 400, 400), waterMat);
+water.rotation.x = -Math.PI / 2;
+scene.add(water);
+
+/* ---------- boats ---------- */
+const boats = [];
+function makeBoat(len, color, cabin) {
+  const g = new THREE.Group();
+  box(len, 3, len * 0.32, std(color), 0, -1, 0, g);
+  box(len * 0.5, cabin, len * 0.26, std(0xf2f2f2), -len * 0.05, 2, 0, g);
+  const lm = new THREE.MeshBasicMaterial({ color: 0x222222 });
+  box(len * 0.52, 1, len * 0.27, lm, -len * 0.05, 2 + cabin * 0.45, 0, g, false);
+  g.userData.lightMat = lm; scene.add(g); return g;
+}
+[
+  { axis: 'x', fixed: 460, start: -1700, len: 3200, speed: 16, L: 40, c: 0x1c5d3a, cab: 6 },
+  { axis: 'x', fixed: 650, start: -1700, len: 3200, speed: -24, L: 26, c: 0xffffff, cab: 4 },
+  { axis: 'x', fixed: 300, start: -1700, len: 3200, speed: 11, L: 60, c: 0x8b1e1e, cab: 7 },
+  { axis: 'z', fixed: -380, start: -1150, len: 2000, speed: 13, L: 22, c: 0xdddddd, cab: 4 },
+  { axis: 'z', fixed: -260, start: -1150, len: 2000, speed: -9, L: 18, c: 0x2b4f8a, cab: 3 },
+].forEach((b, i) => { b.mesh = makeBoat(b.L, b.c, b.cab); b.off = i * 700; boats.push(b); });
+
+/* =========================================================================
+   SKY, stars, sun & moon
+   ========================================================================= */
+const skyU = { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uSunDir: { value: new THREE.Vector3() },
+  uMoonDir: { value: new THREE.Vector3() }, uSunColor: { value: new THREE.Color() }, uNight: { value: 0 }, uSunVis: { value: 1 } };
+const sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 48, 24), new THREE.ShaderMaterial({
+  uniforms: skyU, side: THREE.BackSide, depthWrite: false, fog: false,
+  vertexShader: `varying vec3 vD; void main(){ vD=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);} `,
+  fragmentShader: `
+    uniform vec3 uTop,uHor,uSunDir,uMoonDir,uSunColor; uniform float uNight,uSunVis; varying vec3 vD;
+    void main(){
+      vec3 d=normalize(vD); float y=d.y;
+      vec3 c = y>0. ? mix(uHor,uTop,pow(y,0.45)) : uHor*mix(1.0,0.55,clamp(-y*4.,0.,1.));
+      float s=max(dot(d,uSunDir),0.);
+      c += uSunColor*(pow(s,8.0)*0.35+pow(s,64.0)*0.6)*uSunVis;
+      c += uSunColor*smoothstep(0.9993,0.9997,s)*8.0*uSunVis;
+      float m=max(dot(d,uMoonDir),0.);
+      c += vec3(0.9,0.93,1.0)*(smoothstep(0.9994,0.9997,m)*3.0+pow(m,200.)*0.25)*uNight;
+      gl_FragColor=vec4(c,1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+}));
+scene.add(sky);
+
+const starGeo = new THREE.BufferGeometry(); const sp = [];
+for (let i = 0; i < 2500; i++) { const v = new THREE.Vector3(rnd(-1, 1), rnd(0.02, 1), rnd(-1, 1)).normalize().multiplyScalar(4600); sp.push(v.x, v.y, v.z); }
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false });
+const stars = new THREE.Points(starGeo, starMat); scene.add(stars);
+
+const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x3a4a3a, 0.6); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 3);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -460, right: 460, top: 460, bottom: -460, near: 10, far: 2400 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
+sun.target.position.set(40, 0, -60); scene.add(sun, sun.target);
+const moon = new THREE.DirectionalLight(0x9fb4ff, 0); moon.target = sun.target; scene.add(moon);
+
+/* ---------- day / night update ---------- */
+const C = (h) => new THREE.Color(h);
+const PAL = { dayTop: C(0x3a7bd5), dayHor: C(0xb4d6ef), nightTop: C(0x02060f), nightHor: C(0x0b1630), dusk: C(0xff8a4a),
+              sunLow: C(0xff7a33), sunHigh: C(0xfff4e0) };
+const sunDir = new THREE.Vector3(), moonDir = new THREE.Vector3();
+const smooth = (a, b, x) => { const t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); };
+function updateSky(t) {
+  const th = (t - 6) / 12 * Math.PI;   // rises EAST (+x), high in SOUTH (+z), sets WEST (-x)
+  sunDir.set(Math.cos(th), Math.sin(th) * 0.92, Math.sin(th) * 0.40).normalize();
+  moonDir.set(-Math.cos(th), -Math.sin(th) * 0.85, 0.35).normalize();
+  const e = sunDir.y;
+  const day = smooth(-0.05, 0.25, e), dusk = Math.exp(-Math.pow(e / 0.12, 2)), night = 1 - smooth(-0.16, 0.02, e);
+  const top = PAL.nightTop.clone().lerp(PAL.dayTop, day);
+  const hor = PAL.nightHor.clone().lerp(PAL.dayHor, day).lerp(PAL.dusk, dusk * 0.75);
+  const sc = PAL.sunLow.clone().lerp(PAL.sunHigh, smooth(0, 0.35, e));
+  const sI = 3.0 * smooth(-0.03, 0.12, e);
+
+  skyU.uTop.value.copy(top); skyU.uHor.value.copy(hor); skyU.uSunDir.value.copy(sunDir); skyU.uMoonDir.value.copy(moonDir);
+  skyU.uSunColor.value.copy(sc); skyU.uNight.value = night; skyU.uSunVis.value = smooth(-0.08, 0.02, e);
+  starMat.opacity = night;
+
+  sun.position.copy(sun.target.position).addScaledVector(sunDir, 1000);
+  sun.color.copy(sc); sun.intensity = sI; sun.castShadow = sI > 0.01;
+  moon.position.copy(sun.target.position).addScaledVector(moonDir, 1000); moon.intensity = 0.35 * night;
+  hemi.color.copy(top).lerp(C(0xffffff), 0.4); hemi.intensity = 0.12 + 0.6 * day + 0.15 * dusk;
+  scene.fog.color.copy(hor);
+  renderer.toneMappingExposure = 0.85 + 0.4 * night;
+
+  waterU.uSunDir.value.copy(sunDir); waterU.uMoonDir.value.copy(moonDir);
+  waterU.uSunColor.value.copy(sc); waterU.uSunI.value = sI / 3; waterU.uNight.value = night; waterU.uLight.value = 0.1 + 0.9 * day + 0.3 * dusk;
+  waterU.uSkyTop.value.copy(top); waterU.uSkyHor.value.copy(hor); waterU.uFogColor.value.copy(hor);
+
+  const glow = night * 1.1 + dusk * 0.25;
+  for (const m of nightMats) m.emissiveIntensity = glow;
+  M.lamp.color.setRGB(0.33 + 2.2 * night, 0.33 + 1.6 * night, 0.33 + 0.8 * night);
+  M.pool.emissiveIntensity = 0.6 * night;
+  for (const b of boats) b.mesh.userData.lightMat.color.setRGB(0.13 + 1.8 * night, 0.13 + 1.5 * night, 0.13 + 0.9 * night);
+}
+
+/* =========================================================================
+   LABELS & COMPASS
+   ========================================================================= */
+const labelLayer = document.getElementById('labels');
+const labels = labelDefs.map(d => {
+  const el = document.createElement('div'); el.className = 'lbl ' + (d.cls || ''); el.innerHTML = d.html; labelLayer.appendChild(el);
+  const anchor = new THREE.Object3D(); anchor.position.set(d.x, d.y, d.z); root.add(anchor);
+  return { el, anchor };
+});
+const tmpV = new THREE.Vector3();
+function updateLabels() {
+  if (labelLayer.style.display === 'none') return;
+  for (const L of labels) {
+    L.anchor.getWorldPosition(tmpV); const dist = tmpV.distanceTo(camera.position); tmpV.project(camera);
+    if (tmpV.z > 1 || Math.abs(tmpV.x) > 1.1 || Math.abs(tmpV.y) > 1.1 || dist > 2600) { L.el.style.display = 'none'; continue; }
+    L.el.style.display = 'block';
+    L.el.style.left = ((tmpV.x + 1) / 2 * innerWidth) + 'px';
+    L.el.style.top = ((1 - tmpV.y) / 2 * innerHeight) + 'px';
+    L.el.style.opacity = dist > 1600 ? 0.6 : 1;
+  }
+}
+const needle = document.getElementById('needle'), fwd = new THREE.Vector3();
+function updateCompass() {
+  camera.getWorldDirection(fwd);
+  if (Math.hypot(fwd.x, fwd.z) < 1e-3) fwd.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  const ang = Math.atan2(-fwd.x, -fwd.z);          // North (-Z) angle, clockwise from screen-up
+  needle.style.transform = `rotate(${ang}rad)`;
+}
+
+/* =========================================================================
+   UI
+   ========================================================================= */
+const $ = id => document.getElementById(id);
+let time = parseFloat($('time').value), speed = 0.2, playing = true;
+const fmt = t => { const h = Math.floor(t) % 24, m = Math.floor((t % 1) * 60); return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`; };
+$('time').oninput = e => { time = parseFloat(e.target.value); };
+$('speed').oninput = e => { speed = parseFloat(e.target.value); $('sval').textContent = speed.toFixed(2); };
+$('wave').oninput = e => { waterU.uAmp.value = parseFloat(e.target.value); $('wval').textContent = waterU.uAmp.value.toFixed(2); };
+document.querySelectorAll('button[data-t]').forEach(b => b.onclick = () => { time = parseFloat(b.dataset.t); });
+$('play').onclick = e => { playing = !playing; e.target.textContent = playing ? 'Pause' : 'Play'; e.target.classList.toggle('on', playing); };
+$('lbls').onclick = e => { const on = labelLayer.style.display === 'none'; labelLayer.style.display = on ? 'block' : 'none'; e.target.classList.toggle('on', on); };
+$('orbit').onclick = e => { controls.autoRotate = !controls.autoRotate; e.target.classList.toggle('on', controls.autoRotate); };
+$('photo').onclick = photoView;
+$('top').onclick = topView;
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+/* =========================================================================
+   ANIMATION LOOP
+   ========================================================================= */
+const clock = new THREE.Clock(); let wt = 0;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  wt += dt;
+  if (playing) { time = (time + dt * speed) % 24; $('time').value = time; }
+  $('tval').textContent = fmt(time);
+  updateSky(time);
+  waterU.uTime.value = wt;
+
+  for (const b of boats) {
+    let s = ((b.off + b.speed * wt) % b.len + b.len) % b.len + b.start;
+    const x = b.axis === 'x' ? s : b.fixed, z = b.axis === 'x' ? b.fixed : s;
+    const w = waveAt(x, z, wt, waterU.uAmp.value);
+    b.mesh.position.set(x, w.h + 1.2, z);
+    const heading = b.axis === 'x' ? (b.speed > 0 ? 0 : Math.PI) : (b.speed > 0 ? -Math.PI / 2 : Math.PI / 2);
+    b.mesh.rotation.set(w.gz * 0.8, heading, -w.gx * 0.8, 'YXZ');
+  }
+  sky.position.copy(camera.position); stars.position.copy(camera.position);
+  controls.update();
+  updateLabels();
+  updateCompass();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

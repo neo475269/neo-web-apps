@@ -6,7 +6,7 @@
 		<meta name="theme-color" content="#101512" />
 		<meta
 			name="description"
-			content="A collection of five interactive browser worlds by Neo."
+			content="A collection of six interactive browser worlds by Neo."
 		/>
 		<title>Neo Web Apps</title>
 		<style>
@@ -100,7 +100,7 @@
 
 			.card {
 				position: relative;
-				grid-column: span 4;
+				grid-column: span 3;
 				min-height: 360px;
 				overflow: hidden;
 				color: var(--ink);
@@ -123,6 +123,9 @@
 			}
 			.card:nth-child(5) {
 				animation-delay: 280ms;
+			}
+			.card:nth-child(6) {
+				animation-delay: 350ms;
 			}
 			.card.wide {
 				grid-column: span 6;
@@ -235,6 +238,26 @@
 						transparent 89%
 					),
 					linear-gradient(165deg, #f4b66e, #e47759 58%, #7e7440 59%);
+			}
+
+			.laguna {
+				background:
+					linear-gradient(
+							90deg,
+							transparent 0 19%,
+							rgba(222, 226, 210, 0.9) 20% 25%,
+							transparent 26% 40%,
+							rgba(234, 231, 210, 0.86) 41% 48%,
+							transparent 49% 65%,
+							rgba(214, 221, 205, 0.88) 66% 73%,
+							transparent 74%
+						)
+						center 42% / 90% 55% no-repeat,
+					linear-gradient(
+						#8ac7d0 0 54%,
+						#4d8580 55% 69%,
+						#174c59 70%
+					);
 			}
 
 			.card-copy {
@@ -354,9 +377,9 @@
 			<header>
 				<div>
 					<p class="eyebrow">Interactive collection / 2026</p>
-					<h1>Five worlds.<br />One browser.</h1>
+					<h1>Six worlds.<br />One browser.</h1>
 				</div>
-				<p class="count">05 experiments<br />WebGL + Canvas</p>
+				<p class="count">06 experiments<br />WebGL + Canvas</p>
 			</header>
 
 			<section class="grid" aria-label="Web app collection">
@@ -413,6 +436,17 @@
 						<div>
 							<p class="card-number">05 / Golden hour</p>
 							<h2>Vineyard Windmill</h2>
+						</div>
+						<span class="open" aria-hidden="true">↗</span>
+					</div>
+				</a>
+
+				<a class="card" href="lagunaverde/laguna-verde.html">
+					<div class="visual laguna" aria-hidden="true"></div>
+					<div class="card-copy">
+						<div>
+							<p class="card-number">06 / Waterfront</p>
+							<h2>Laguna Verde</h2>
 						</div>
 						<span class="open" aria-hidden="true">↗</span>
 					</div>
