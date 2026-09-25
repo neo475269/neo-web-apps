@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Thatched Cottage – Three.js</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#cfd9a0;font-family:Georgia,serif}
+  #ui{position:fixed;top:12px;left:12px;display:flex;gap:8px;z-index:2}
+  #ui button{background:#5b3a1e;color:#f5e6c4;border:2px solid #d8b35a;border-radius:6px;padding:7px 12px;cursor:pointer;font-family:inherit}
+  #ui button:hover{background:#7a4f28}
+  #hint{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#3d3a1c;background:rgba(245,235,200,.75);padding:5px 12px;border-radius:6px;font-size:13px}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<div id="ui">
+  <button id="rotBtn">Auto-rotate: On</button>
+  <button id="nightBtn">Switch to Night</button>
+</div>
+<div id="hint">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------- Renderer / Scene / Camera ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const DAY_SKY = new THREE.Color('#cfd9a0'), NIGHT_SKY = new THREE.Color('#1b2436');
+scene.background = DAY_SKY.clone();
+scene.fog = new THREE.Fog(DAY_SKY.clone(), 30, 75);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(-13, 12, 17);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2.5, 1);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.48;
+controls.minDistance = 7; controls.maxDistance = 45;
+controls.autoRotate = true; controls.autoRotateSpeed = 0.6;
+
+// ---------- Lights ----------
+const hemi = new THREE.HemisphereLight('#fff3c8', '#5a6b2a', 0.9);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight('#ffe2a0', 2.6);
+sun.position.set(-12, 20, 10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, near: 1, far: 60 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+// ---------- Procedural canvas textures ----------
+function canvasTex(w, h, draw, rx = 1, ry = 1) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+const thatchTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#c99a38'; g.fillRect(0, 0, w, h);
+  const cols = ['#e8c25a', '#d8b35a', '#b8873a', '#f2d47c', '#a8782e'];
+  g.lineWidth = 2;
+  for (let i = 0; i < 2600; i++) {
+    const x = rnd(0, w), y = rnd(0, h), l = rnd(10, 26);
+    g.strokeStyle = pick(cols);
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + rnd(-3, 3), y + l); g.stroke();
+  }
+}, 3, 2);
+
+const plasterTex = canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#ece3cf'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 1500; i++) {
+    g.fillStyle = `rgba(${pick([180, 210, 255])},${pick([170, 200, 245])},150,${rnd(.05, .15)})`;
+    g.fillRect(rnd(0, w), rnd(0, h), 2, 2);
+  }
+}, 2, 1);
+
+const brickTex = canvasTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#d9c4a8'; g.fillRect(0, 0, w, h);
+  const bh = 16, bw = 32;
+  for (let r = 0; r < h / bh; r++) for (let c = -1; c < w / bw + 1; c++) {
+    g.fillStyle = pick(['#b5523b', '#a4452f', '#c4644a', '#9a3f2c']);
+    g.fillRect(c * bw + (r % 2 ? bw / 2 : 0) + 1, r * bh + 1, bw - 3, bh - 3);
+  }
+}, 1, 2);
+
+const grassTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#95a83e'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 5000; i++) {
+    g.fillStyle = pick(['#a8b94a', '#7f9433', '#b9c65a', '#6f8a2c', '#c2c86a']);
+    g.fillRect(rnd(0, w), rnd(0, h), 2, rnd(2, 5));
+  }
+}, 14, 14);
+
+const woodTex = canvasTex(64, 128, (g, w, h) => {
+  g.fillStyle = '#7a4a24'; g.fillRect(0, 0, w, h);
+  for (let x = 0; x < w; x += 4) { g.fillStyle = pick(['#6a3f1f', '#8a5a2c', '#5e371b']); g.fillRect(x, 0, 2, h); }
+  g.fillStyle = '#3e2412'; for (let x = 0; x < w; x += 16) g.fillRect(x, 0, 1.5, h);
+});
+
+// ---------- Materials ----------
+const M = {
+  thatch: new THREE.MeshStandardMaterial({ map: thatchTex, roughness: 1 }),
+  thatchSide: new THREE.MeshStandardMaterial({ color: '#b8873a', map: thatchTex, roughness: 1, side: THREE.DoubleSide }),
+  plaster: new THREE.MeshStandardMaterial({ map: plasterTex, roughness: 0.95 }),
+  timber: new THREE.MeshStandardMaterial({ color: '#4a2e1a', roughness: 0.9 }),
+  brick: new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.9 }),
+  cap: new THREE.MeshStandardMaterial({ color: '#8a3a2a', roughness: 0.9 }),
+  frame: new THREE.MeshStandardMaterial({ color: '#6b4222', roughness: 0.8 }),
+  glass: new THREE.MeshStandardMaterial({ color: '#f4b048', emissive: '#ff9a2e', emissiveIntensity: 0.35, roughness: 0.3 }),
+  door: new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.85 }),
+  grass: new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }),
+  stone: new THREE.MeshStandardMaterial({ color: '#dccfb0', roughness: 0.95, flatShading: true }),
+  rock: new THREE.MeshStandardMaterial({ color: '#9c9588', roughness: 1, flatShading: true }),
+  fence: new THREE.MeshStandardMaterial({ color: '#6e4526', roughness: 0.95 }),
+  pot: new THREE.MeshStandardMaterial({ color: '#b85c32', roughness: 0.8 }),
+  trunk: new THREE.MeshStandardMaterial({ color: '#5a3a22', roughness: 1 }),
+  brass: new THREE.MeshStandardMaterial({ color: '#c9a24a', metalness: 0.7, roughness: 0.3 }),
+};
+const leafMats = ['#3f6b2a', '#4f7d30', '#6a9a3a', '#2f5a28', '#89ad46'].map(c =>
+  new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true }));
+const conMats = ['#24472a', '#2e5a32', '#1e3d26'].map(c =>
+  new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true }));
+
+function mesh(geo, mat, x = 0, y = 0, z = 0, parent = scene) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+  parent.add(m); return m;
+}
+const box = (w, h, d, mat, x, y, z, p) => mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, p);
+
+// ---------- Ground ----------
+const ground = mesh(new THREE.CircleGeometry(60, 64), M.grass);
+ground.rotation.x = -Math.PI / 2; ground.castShadow = false;
+
+// ---------- House ----------
+const house = new THREE.Group(); scene.add(house);
+const W = 7, D = 4.5, H = 2.7, RISE = 2.9, OVER = 0.7;
+
+// stone plinth + walls
+box(W + 0.2, 0.35, D + 0.2, M.rock, 0, 0.175, 0, house);
+box(W, H, D, M.plaster, 0, H / 2 + 0.3, 0, house);
+const WY = 0.3; // wall base
+const top = WY + H;
+
+// gable prism (attic walls)
+const tri = new THREE.Shape();
+tri.moveTo(-D / 2, 0); tri.lineTo(D / 2, 0); tri.lineTo(0, RISE); tri.lineTo(-D / 2, 0);
+const gable = mesh(new THREE.ExtrudeGeometry(tri, { depth: W, bevelEnabled: false }), M.plaster, -W / 2, top, 0, house);
+gable.rotation.y = Math.PI / 2;
+
+// half-timbering on a wall face
+function timberFace(axis, sign) {
+  const len = axis === 'z' ? W : D, off = (axis === 'z' ? D : W) / 2 + 0.04;
+  const put = (w, h, a, y, rot = 0) => {
+    const b = axis === 'z' ? box(w, h, 0.1, M.timber, a, y, sign * off, house)
+                           : box(0.1, h, w, M.timber, sign * off, y, a, house);
+    if (axis === 'z') b.rotation.z = rot; else b.rotation.x = rot;
+  };
+  put(len + 0.1, 0.18, 0, WY + 0.09);          // sill beam
+  put(len + 0.1, 0.18, 0, top - 0.09);          // top plate
+  put(len + 0.1, 0.12, 0, WY + H * 0.55);       // mid rail
+  const posts = axis === 'z' ? 6 : 4;
+  for (let i = 0; i <= posts; i++) put(0.16, H, -len / 2 + (len * i) / posts, WY + H / 2);
+  // diagonal braces at ends
+  const dlen = Math.hypot(len / posts, H * 0.45);
+  const ang = Math.atan2(H * 0.45, len / posts);
+  put(dlen, 0.1, -len / 2 + len / posts / 2, WY + H * 0.78, ang);
+  put(dlen, 0.1, len / 2 - len / posts / 2, WY + H * 0.78, -ang);
+}
+timberFace('z', 1); timberFace('z', -1); timberFace('x', 1); timberFace('x', -1);
+
+// gable-end timbers
+for (const s of [-1, 1]) {
+  const x = s * (W / 2 + 0.05);
+  box(0.1, RISE * 0.9, 0.14, M.timber, x, top + RISE * 0.45, 0, house);
+  const l = Math.hypot(D / 2, RISE);
+  for (const zs of [-1, 1]) {
+    const b = box(0.1, 0.14, l, M.timber, x, top + RISE / 2, zs * D / 4, house);
+    b.rotation.x = zs * Math.atan2(RISE, D / 2);
+  }
+  box(0.1, 0.12, D * 0.55, M.timber, x, top + RISE * 0.42, 0, house);
+}
+
+// thatched roof slopes (thick, overhanging, with rounded ridge & eaves)
+const halfSpan = D / 2 + OVER, riseTot = RISE * (halfSpan / (D / 2));
+const slopeLen = Math.hypot(halfSpan, riseTot), theta = Math.atan2(riseTot, halfSpan), TH = 0.55;
+const roofBaseY = top - (riseTot - RISE);
+for (const s of [1, -1]) {
+  const slope = box(W + 2 * OVER, TH, slopeLen, M.thatch, 0, 0, 0, house);
+  slope.rotation.x = s * theta;
+  const nx = Math.sin(theta) * TH / 2, ny = Math.cos(theta) * TH / 2;
+  slope.position.set(0, roofBaseY + riseTot / 2 + ny, s * (halfSpan / 2 + nx));
+  // rounded eave roll
+  const eave = mesh(new THREE.CylinderGeometry(TH * 0.55, TH * 0.55, W + 2 * OVER, 12), M.thatch, 0, roofBaseY + 0.05, s * (halfSpan + 0.05), house);
+  eave.rotation.z = Math.PI / 2;
+}
+const ridge = mesh(new THREE.CylinderGeometry(0.5, 0.5, W + 2 * OVER + 0.1, 14), M.thatch, 0, roofBaseY + riseTot + 0.35, 0, house);
+ridge.rotation.z = Math.PI / 2;
+// shaggy tufts along ridge for the hand-made look
+for (let i = 0; i < 40; i++) {
+  const t = mesh(new THREE.ConeGeometry(0.12, 0.45, 5), M.thatch, rnd(-W / 2 - OVER, W / 2 + OVER), roofBaseY + riseTot + 0.8, rnd(-0.2, 0.2), house);
+  t.rotation.set(rnd(-.5, .5), 0, rnd(-.5, .5));
+}
+
+// ---------- Windows ----------
+const glassPanes = [];
+function windowAt(x, y, z, rotY = 0, w = 1.0, h = 1.0, parent = house) {
+  const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = rotY; parent.add(g);
+  box(w + 0.2, h + 0.2, 0.14, M.frame, 0, 0, 0, g);
+  const glass = box(w, h, 0.05, M.glass, 0, 0, 0.06, g); glassPanes.push(glass);
+  box(0.06, h, 0.08, M.frame, 0, 0, 0.1, g);
+  box(w, 0.06, 0.08, M.frame, 0, 0, 0.1, g);
+  box(w + 0.4, 0.1, 0.25, M.frame, 0, -h / 2 - 0.12, 0.08, g); // sill
+  // flower box
+  box(w + 0.1, 0.22, 0.25, M.pot, 0, -h / 2 - 0.3, 0.2, g);
+  for (let i = 0; i < 5; i++)
+    mesh(new THREE.SphereGeometry(0.1, 6, 5), new THREE.MeshStandardMaterial({ color: pick(['#e0525e', '#f2d04a', '#f4f0e6', '#c46fd0']) }), -w / 2 + 0.1 + i * (w - 0.2) / 4, -h / 2 - 0.12, 0.25, g);
+  return g;
+}
+const winY = WY + H * 0.52;
+windowAt(-2.4, winY, D / 2 + 0.06);
+windowAt(1.3, winY, D / 2 + 0.06);
+windowAt(W / 2 + 0.06, winY, 0.6, Math.PI / 2);
+windowAt(-W / 2 - 0.06, winY, -0.6, -Math.PI / 2);
+windowAt(-1.5, winY, -D / 2 - 0.06, Math.PI);
+windowAt(1.8, winY, -D / 2 - 0.06, Math.PI);
+
+// ---------- Door with arched thatch hood ----------
+const doorX = -0.6;
+const doorG = new THREE.Group(); doorG.position.set(doorX, WY, D / 2 + 0.05); house.add(doorG);
+box(1.3, 2.1, 0.14, M.frame, 0, 1.05, 0, doorG);
+box(1.05, 1.95, 0.1, M.door, 0, 0.98, 0.06, doorG);
+const arch = mesh(new THREE.CylinderGeometry(0.525, 0.525, 0.1, 20, 1, false, -Math.PI / 2, Math.PI), M.door, 0, 1.95, 0.06, doorG);
+arch.rotation.x = -Math.PI / 2;
+mesh(new THREE.SphereGeometry(0.06, 8, 8), M.brass, 0.35, 1.0, 0.15, doorG);
+box(1.6, 0.18, 0.8, M.rock, 0, -0.2, 0.4, doorG); // step
+// door hood
+const hood = mesh(new THREE.CylinderGeometry(0.85, 0.85, 1.0, 16, 1, true, -Math.PI / 2, Math.PI), M.thatchSide, 0, 2.55, 0.35, doorG);
+hood.rotation.x = -Math.PI / 2;
+// wall lantern
+box(0.18, 0.28, 0.18, M.timber, 0.95, 2.0, 0.15, doorG);
+const lanternGlow = mesh(new THREE.BoxGeometry(0.12, 0.18, 0.12), M.glass, 0.95, 2.0, 0.2, doorG);
+const lanternLight = new THREE.PointLight('#ffb050', 0, 8, 1.6);
+lanternLight.position.set(doorX + 0.95, WY + 2, D / 2 + 0.6); scene.add(lanternLight);
+
+// ---------- Dormer ----------
+const dorm = new THREE.Group(); dorm.position.set(doorX, top, D / 2 - 0.2); house.add(dorm);
+box(1.7, 1.5, 2.2, M.plaster, 0, 0.55, -1.0, dorm);
+box(1.8, 0.14, 0.12, M.timber, 0, -0.1, 0.1, dorm);
+for (const sx of [-0.8, 0.8]) box(0.14, 1.5, 0.12, M.timber, sx, 0.55, 0.1, dorm);
+windowAt(0, 0.6, 0.16, 0, 0.8, 0.75, dorm);
+const dHood = mesh(new THREE.CylinderGeometry(1.15, 1.15, 2.8, 18, 1, false, -Math.PI / 2, Math.PI), M.thatch, 0, 1.25, -0.9, dorm);
+dHood.rotation.x = -Math.PI / 2;
+const dRoll = mesh(new THREE.TorusGeometry(1.15, 0.2, 8, 20, Math.PI), M.thatch, 0, 1.25, 0.5, dorm);
+
+// ---------- Chimneys ----------
+const smokeSources = [];
+function chimney(x, z, y0, hgt, w = 0.8) {
+  box(w, hgt, w, M.brick, x, y0 + hgt / 2, z, house);
+  box(w + 0.2, 0.2, w + 0.2, M.cap, x, y0 + hgt + 0.1, z, house);
+  box(w * 0.5, 0.3, w * 0.5, M.cap, x, y0 + hgt + 0.35, z, house);
+  smokeSources.push(new THREE.Vector3(x, y0 + hgt + 0.55, z));
+}
+chimney(-1.6, 0, top + 1.8, 2.6, 0.75);
+chimney(W / 2 - 0.2, -0.5, 0.3, top + RISE + 1.9, 0.9);
+
+// ---------- Smoke particles ----------
+const smokeTex = canvasTex(64, 64, (g) => {
+  const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+});
+const puffs = [];
+smokeSources.forEach(src => {
+  for (let i = 0; i < 18; i++) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, color: '#eeeeee', transparent: true, depthWrite: false }));
+    s.userData = { src, age: i / 18 * 5, life: 5, drift: rnd(0.2, 0.5) };
+    scene.add(s); puffs.push(s);
+  }
+});
+
+// ---------- Stone path ----------
+const pathCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(doorX, 0, D / 2 + 1.0),
+  new THREE.Vector3(-1.4, 0, 5.5),
+  new THREE.Vector3(0.6, 0, 9),
+  new THREE.Vector3(1.2, 0, 13),
+  new THREE.Vector3(-0.5, 0, 18),
+  new THREE.Vector3(-1.5, 0, 24),
+]);
+const stoneMats = ['#e3d7b8', '#d4c6a2', '#eadfc4', '#c9bb98'].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95, flatShading: true }));
+for (let i = 0; i < 260; i++) {
+  const t = i / 260, p = pathCurve.getPointAt(t), tan = pathCurve.getTangentAt(t);
+  const side = new THREE.Vector3(-tan.z, 0, tan.x);
+  const width = 0.8 + t * 0.9;
+  const pos = p.clone().addScaledVector(side, rnd(-width, width));
+  const r = rnd(0.22, 0.4);
+  const st = mesh(new THREE.CylinderGeometry(r, r * 1.05, 0.08, Math.floor(rnd(5, 8))), pick(stoneMats), pos.x, 0.04, pos.z);
+  st.rotation.y = rnd(0, Math.PI); st.scale.set(rnd(1, 1.5), 1, 1); st.castShadow = false;
+}
+
+// ---------- Rocks ----------
+function rock(x, z, s) {
+  const r = mesh(new THREE.DodecahedronGeometry(s, 0), M.rock, x, s * 0.4, z);
+  r.scale.y = 0.6; r.rotation.set(rnd(0, 3), rnd(0, 3), 0);
+}
+[[3.5, 8, .45], [-3.2, 6.5, .5], [4.8, 11, .6], [5.5, 6, .3], [2.8, 5.2, .25], [-2.5, 12, .35], [6, 9, .35], [-4, 14, .5]].forEach(a => rock(...a));
+
+// ---------- Fence + low stone wall (front-left) ----------
+const fenceG = new THREE.Group(); fenceG.position.set(-6.5, 0, 6); fenceG.rotation.y = -0.55; scene.add(fenceG);
+for (let i = 0; i < 5; i++) {
+  box(0.22, 1.5, 0.22, M.fence, i * 1.6, 0.75, 0, fenceG);
+}
+for (const y of [0.55, 1.15]) {
+  const rail = box(6.6, 0.14, 0.1, M.fence, 3.2, y, 0.08, fenceG);
+  rail.rotation.z = rnd(-0.03, 0.03);
+}
+const wallG = new THREE.Group(); wallG.position.set(-6.8, 0, 8.5); wallG.rotation.y = -0.4; scene.add(wallG);
+for (let i = 0; i < 16; i++) for (let row = 0; row < 2; row++) {
+  const s = rnd(0.28, 0.4);
+  const r = mesh(new THREE.DodecahedronGeometry(s, 0), M.rock, i * 0.45 + (row ? 0.22 : 0), 0.25 + row * 0.42, rnd(-0.08, 0.08), wallG);
+  r.scale.set(1.2, 0.75, 0.9); r.rotation.set(rnd(0, 1), rnd(0, 3), rnd(0, 1));
+}
+
+// ---------- Bushes & flowers ----------
+function bush(x, z, s = 1, flowers = true) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+  for (let i = 0; i < 5; i++)
+    mesh(new THREE.IcosahedronGeometry(rnd(0.35, 0.6) * s, 0), pick(leafMats), rnd(-0.5, 0.5) * s, rnd(0.3, 0.6) * s, rnd(-0.4, 0.4) * s, g);
+  if (flowers) for (let i = 0; i < 8; i++)
+    mesh(new THREE.SphereGeometry(0.07, 6, 5), new THREE.MeshStandardMaterial({ color: pick(['#f4f0e6', '#e0525e', '#f2d04a', '#b27ad6']) }), rnd(-0.6, 0.6) * s, rnd(0.5, 0.9) * s, rnd(-0.1, 0.5) * s, g);
+}
+bush(-3.6, 2.9, 1.1); bush(-1.7, 3.1, 0.8); bush(1.0, 3.3, 1.0); bush(3.3, 2.8, 1.2);
+bush(4.3, 1.2, 1.1); bush(-4.4, 0.5, 1.2); bush(-4.3, -1.8, 1); bush(4.1, -1.8, 1.1, false);
+bush(-5.5, 9.5, 0.8); bush(5.5, 4.5, 0.9);
+
+// ---------- Pots & bench ----------
+function pot(x, z, s = 1) {
+  mesh(new THREE.CylinderGeometry(0.28 * s, 0.2 * s, 0.4 * s, 12), M.pot, x, 0.2 * s, z);
+  mesh(new THREE.IcosahedronGeometry(0.3 * s, 0), pick(leafMats), x, 0.5 * s, z);
+  for (let i = 0; i < 3; i++) mesh(new THREE.SphereGeometry(0.07, 6, 5), new THREE.MeshStandardMaterial({ color: pick(['#e0525e', '#f2d04a']) }), x + rnd(-.2, .2), 0.7 * s, z + rnd(-.2, .2));
+}
+pot(-1.9, 3.8); pot(-2.4, 4.0, 0.8); pot(0.6, 3.9, 0.9);
+const bench = new THREE.Group(); bench.position.set(2.2, 0, 3.9); scene.add(bench);
+box(1.4, 0.1, 0.5, M.fence, 0, 0.45, 0, bench);
+for (const bx of [-0.55, 0.55]) box(0.12, 0.45, 0.4, M.fence, bx, 0.22, 0, bench);
+pot(1.8, 3.9, 0.7); pot(2.5, 3.9, 0.8);
+
+// ---------- Trees ----------
+function conifer(x, z, s) {
+  mesh(new THREE.CylinderGeometry(0.2 * s, 0.3 * s, 1.5 * s, 7), M.trunk, x, 0.75 * s, z);
+  const mat = pick(conMats);
+  for (let i = 0; i < 4; i++)
+    mesh(new THREE.ConeGeometry((2.0 - i * 0.4) * s, 2.2 * s, 8), mat, x, (1.8 + i * 1.3) * s, z).rotation.y = rnd(0, 3);
+}
+function leafy(x, z, s) {
+  mesh(new THREE.CylinderGeometry(0.25 * s, 0.4 * s, 3 * s, 7), M.trunk, x, 1.5 * s, z);
+  for (let i = 0; i < 7; i++)
+    mesh(new THREE.IcosahedronGeometry(rnd(1.0, 1.6) * s, 1), pick(leafMats), x + rnd(-1.3, 1.3) * s, (3.2 + rnd(0, 2)) * s, z + rnd(-1.3, 1.3) * s);
+}
+const treeSpots = [];
+for (let i = 0; i < 70; i++) {
+  const a = rnd(0, Math.PI * 2), r = rnd(11, 38);
+  const x = Math.cos(a) * r, z = Math.sin(a) * r;
+  if (z > 4 && Math.abs(x) < 6) continue; // keep the path/front view open
+  if (treeSpots.some(p => Math.hypot(p[0] - x, p[1] - z) < 3.2)) continue;
+  treeSpots.push([x, z]);
+  (Math.random() < 0.55 ? conifer : leafy)(x, z, rnd(0.9, 1.5));
+}
+// framing trees like the illustration
+leafy(-9.5, 3, 1.4); leafy(9, -1, 1.3); conifer(9.5, 8, 1.3); conifer(-7, -7, 1.5); leafy(-10, 11, 1.1); conifer(6, -8, 1.6);
+
+// grass tufts
+const tuftMat = new THREE.MeshStandardMaterial({ color: '#6f8f2c', roughness: 1 });
+for (let i = 0; i < 250; i++) {
+  const a = rnd(0, Math.PI * 2), r = rnd(4, 20);
+  const t = mesh(new THREE.ConeGeometry(0.06, rnd(0.3, 0.6), 4), tuftMat, Math.cos(a) * r, 0.2, Math.sin(a) * r);
+  t.rotation.z = rnd(-0.3, 0.3); t.castShadow = false;
+}
+
+// ---------- Day / Night ----------
+let night = false;
+const nightBtn = document.getElementById('nightBtn');
+nightBtn.onclick = () => {
+  night = !night;
+  nightBtn.textContent = night ? 'Switch to Day' : 'Switch to Night';
+  scene.background.copy(night ? NIGHT_SKY : DAY_SKY); scene.fog.color.copy(scene.background);
+  sun.intensity = night ? 0.25 : 2.6; sun.color.set(night ? '#8fa6ff' : '#ffe2a0');
+  hemi.intensity = night ? 0.25 : 0.9;
+  M.glass.emissiveIntensity = night ? 2.2 : 0.35;
+  lanternLight.intensity = night ? 6 : 0;
+};
+const rotBtn = document.getElementById('rotBtn');
+rotBtn.onclick = () => { controls.autoRotate = !controls.autoRotate; rotBtn.textContent = 'Auto-rotate: ' + (controls.autoRotate ? 'On' : 'Off'); };
+
+// ---------- Animate ----------
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  puffs.forEach(p => {
+    const u = p.userData; u.age += dt;
+    if (u.age > u.life) u.age = 0;
+    const k = u.age / u.life;
+    p.position.set(u.src.x + Math.sin(t * 0.8 + k * 6) * 0.3 + k * 1.6 * u.drift * 3, u.src.y + k * 4, u.src.z + k * 0.6);
+    const s = 0.4 + k * 1.6; p.scale.set(s, s, s);
+    p.material.opacity = (1 - k) * 0.75 * Math.min(1, k * 8);
+  });
+  if (night) M.glass.emissiveIntensity = 2.0 + Math.sin(t * 7) * 0.12 + Math.sin(t * 13) * 0.08;
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

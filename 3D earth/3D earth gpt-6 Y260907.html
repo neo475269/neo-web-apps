@@ -1,0 +1,581 @@
+<!DOCTYPE html>  
+<html lang="en">  
+<head>  
+  <meta charset="UTF-8" />  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />  
+  <meta name="theme-color" content="#050912" />  
+  <title>Earth — Orbital Explorer</title>  
+  
+  <style>  
+    :root {  
+      color-scheme: dark;  
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;  
+      background: #050912;  
+      color: #edf4ff;  
+    }  
+  
+    * { box-sizing: border-box; }  
+  
+    body {  
+      margin: 0;  
+      overflow: hidden;  
+    }  
+  
+    #scene {  
+      position: fixed;  
+      inset: 0;  
+      background: radial-gradient(ellipse at center, #102036, #050912 70%);  
+    }  
+  
+    canvas {  
+      display: block;  
+      width: 100%;  
+      height: 100%;  
+      touch-action: none;  
+      outline: none;  
+      cursor: grab;  
+    }  
+  
+    canvas:active { cursor: grabbing; }  
+  
+    header {  
+      position: fixed;  
+      top: 34px;  
+      left: 38px;  
+      right: 38px;  
+      display: flex;  
+      justify-content: space-between;  
+      align-items: flex-start;  
+      pointer-events: none;  
+    }  
+  
+    .eyebrow {  
+      display: flex;  
+      align-items: center;  
+      gap: 10px;  
+      margin-bottom: 13px;  
+      color: #98adc8;  
+      font-size: 10px;  
+      font-weight: 600;  
+      letter-spacing: 3px;  
+      text-transform: uppercase;  
+    }  
+  
+    .dot {  
+      width: 6px;  
+      height: 6px;  
+      border-radius: 50%;  
+      background: #83dcff;  
+      box-shadow: 0 0 14px #83dcff99;  
+    }  
+  
+    h1 {  
+      margin: 0;  
+      font-size: clamp(32px, 5vw, 52px);  
+      font-weight: 400;  
+      letter-spacing: 8px;  
+      line-height: 1;  
+    }  
+  
+    .subtitle {  
+      margin: 14px 0 0;  
+      color: #8fa1b9;  
+      font-size: 13px;  
+      letter-spacing: .3px;  
+    }  
+  
+    .badge {  
+      padding: 9px 12px;  
+      border: 1px solid #ffffff16;  
+      border-radius: 6px;  
+      color: #9baec7;  
+      font-size: 10px;  
+      letter-spacing: 2px;  
+      background: #0b152455;  
+    }  
+  
+    footer {  
+      position: fixed;  
+      bottom: 28px;  
+      left: 16px;  
+      right: 16px;  
+      display: flex;  
+      flex-direction: column;  
+      align-items: center;  
+      gap: 15px;  
+      pointer-events: none;  
+    }  
+  
+    .toolbar {  
+      display: flex;  
+      align-items: center;  
+      gap: 10px;  
+      padding: 10px;  
+      border: 1px solid #a6caff24;  
+      border-radius: 16px;  
+      background: #101b2bba;  
+      box-shadow: 0 12px 48px #00000055;  
+      backdrop-filter: blur(18px);  
+      -webkit-backdrop-filter: blur(18px);  
+      pointer-events: auto;  
+    }  
+  
+    button {  
+      display: inline-flex;  
+      align-items: center;  
+      justify-content: center;  
+      gap: 8px;  
+      min-height: 38px;  
+      padding: 0 14px;  
+      border: 1px solid transparent;  
+      border-radius: 9px;  
+      background: #ffffff09;  
+      color: #dae9ff;  
+      font: inherit;  
+      font-size: 12px;  
+      white-space: nowrap;  
+      cursor: pointer;  
+      transition: background .2s, border-color .2s;  
+    }  
+  
+    button:hover {  
+      background: #ffffff15;  
+      border-color: #ffffff20;  
+    }  
+  
+    button:focus-visible,  
+    input:focus-visible {  
+      outline: 2px solid #8bd5ff;  
+      outline-offset: 3px;  
+    }  
+  
+    button svg {  
+      width: 15px;  
+      height: 15px;  
+      flex-shrink: 0;  
+    }  
+  
+    .divider {  
+      width: 1px;  
+      height: 24px;  
+      background: #ffffff15;  
+    }  
+  
+    .speed-control {  
+      display: flex;  
+      align-items: center;  
+      gap: 9px;  
+      padding: 0 8px;  
+      color: #95abc7;  
+      font-size: 11px;  
+    }  
+  
+    input[type="range"] {  
+      width: 80px;  
+      accent-color: #87ceff;  
+      cursor: pointer;  
+    }  
+  
+    output {  
+      width: 28px;  
+      color: #d3e7ff;  
+      font-variant-numeric: tabular-nums;  
+    }  
+  
+    .instructions {  
+      margin: 0;  
+      color: #8093ad;  
+      font-size: 11px;  
+      letter-spacing: .3px;  
+      text-align: center;  
+      line-height: 1.8;  
+    }  
+  
+    .instructions span {  
+      margin: 0 8px;  
+      color: #3d526c;  
+    }  
+  
+    #status {  
+      position: fixed;  
+      top: 50%;  
+      left: 50%;  
+      transform: translate(-50%, -50%);  
+      max-width: 90vw;  
+      padding: 12px 18px;  
+      border: 1px solid #ffffff18;  
+      border-radius: 10px;  
+      background: #081321dc;  
+      color: #bdd6f3;  
+      font-size: 13px;  
+      text-align: center;  
+      pointer-events: none;  
+    }  
+  
+    #status[hidden] { display: none; }  
+  
+    @media (max-width: 600px) {  
+      header { top: 25px; left: 24px; right: 24px; }  
+      .badge { display: none; }  
+      footer { bottom: 20px; }  
+      .toolbar { gap: 5px; padding: 8px; }  
+      button { padding: 0 10px; }  
+      .speed-control { gap: 5px; padding: 0 4px; }  
+      .speed-label { display: none; }  
+      input[type="range"] { width: 60px; }  
+      .instructions { max-width: 290px; font-size: 10px; }  
+      .instructions span { margin: 0 4px; }  
+    }  
+  </style>  
+  
+  <script type="importmap">  
+    {  
+      "imports": {  
+        "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",  
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"  
+      }  
+    }  
+  </script>  
+</head>  
+<body>  
+  <main id="scene" aria-label="Interactive three-dimensional Earth"></main>  
+  
+  <header>  
+    <div>  
+      <div class="eyebrow"><span class="dot"></span> Orbital explorer</div>  
+      <h1>EARTH</h1>  
+      <p class="subtitle">A world in motion. Yours to explore.</p>  
+    </div>  
+    <div class="badge">INTERACTIVE / 3D</div>  
+  </header>  
+  
+  <div id="status" role="status">Preparing your planet…</div>  
+  
+  <footer>  
+    <div class="toolbar" aria-label="Earth controls">  
+      <button id="rotation" type="button" aria-label="Pause rotation">  
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">  
+          <path d="M5 4h3v12H5zm7 0h3v12h-3z"/>  
+        </svg>  
+        <span>Pause</span>  
+      </button>  
+  
+      <button id="reset" type="button" title="Reset camera and zoom">  
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"  
+             stroke-width="1.7" stroke-linecap="round"  
+             stroke-linejoin="round" aria-hidden="true">  
+          <path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>  
+        </svg>  
+        Reset view  
+      </button>  
+  
+      <div class="divider"></div>  
+  
+      <div class="speed-control">  
+        <label for="speed" class="speed-label">Speed</label>  
+        <input id="speed" type="range" min="0.2" max="3" step="0.1"  
+               value="1" aria-label="Rotation speed" />  
+        <output id="speed-value" for="speed">1×</output>  
+      </div>  
+    </div>  
+  
+    <p class="instructions">  
+      Drag to orbit <span>·</span> Scroll to zoom  
+      <span>·</span> Right-drag to pan<br />  
+      Touch: one finger to orbit, two to zoom &amp; pan  
+    </p>  
+  </footer>  
+  
+  <script type="module">  
+    const status = document.querySelector("#status");  
+  
+    try {  
+      const THREE = await import("three");  
+      const { OrbitControls } = await import(  
+        "three/addons/controls/OrbitControls.js"  
+      );  
+  
+      const container = document.querySelector("#scene");  
+      const scene = new THREE.Scene();  
+  
+      const camera = new THREE.PerspectiveCamera(  
+        42, innerWidth / innerHeight, 0.05, 250  
+      );  
+  
+      const renderer = new THREE.WebGLRenderer({  
+        antialias: true,  
+        alpha: true  
+      });  
+  
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));  
+      renderer.setSize(innerWidth, innerHeight);  
+      renderer.outputColorSpace = THREE.SRGBColorSpace;  
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;  
+      renderer.toneMappingExposure = 1.1;  
+      container.appendChild(renderer.domElement);  
+  
+      renderer.domElement.tabIndex = 0;  
+      renderer.domElement.setAttribute(  
+        "aria-label",  
+        "Earth viewer. Drag to orbit, scroll to zoom, right-drag to pan."  
+      );  
+      renderer.domElement.addEventListener("contextmenu", e => e.preventDefault());  
+  
+      const controls = new OrbitControls(camera, renderer.domElement);  
+      controls.enableDamping = true;  
+      controls.dampingFactor = 0.065;  
+      controls.enablePan = true;  
+      controls.screenSpacePanning = true;  
+      controls.rotateSpeed = 0.6;  
+      controls.zoomSpeed = 0.8;  
+      controls.panSpeed = 0.65;  
+      controls.minDistance = 1.35;  
+      controls.maxDistance = 25;  
+  
+      function fittedDistance() {  
+        const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);  
+        return Math.max(  
+          3.7,  
+          1.25 / (Math.tan(halfFov) * Math.min(camera.aspect, 1))  
+        );  
+      }  
+  
+      let homeDistance = fittedDistance();  
+      camera.position.set(0, 0.15, homeDistance);  
+      controls.update();  
+  
+      // Sunlight and a little ambient light keep the night side readable.  
+      scene.add(new THREE.AmbientLight(0x8daee5, 0.35));  
+  
+      const sunlight = new THREE.DirectionalLight(0xfff4e8, 2.7);  
+      sunlight.position.set(-3, 3, 5);  
+      scene.add(sunlight);  
+  
+      // Tilt the planet's axis independently of its daily rotation.  
+      const planet = new THREE.Group();  
+      planet.rotation.z = THREE.MathUtils.degToRad(-23.4);  
+      scene.add(planet);  
+  
+      const earthMaterial = new THREE.MeshPhongMaterial({  
+        color: 0x24669b,  
+        specular: 0x344e66,  
+        shininess: 18  
+      });  
+  
+      const earth = new THREE.Mesh(  
+        new THREE.SphereGeometry(1, 96, 64),  
+        earthMaterial  
+      );  
+      earth.rotation.y = 0.6;  
+      planet.add(earth);  
+  
+      const loader = new THREE.TextureLoader();  
+      const textureRoot = "https://threejs.org/examples/textures/planets/";  
+  
+      loader.load(  
+        textureRoot + "earth_atmos_2048.jpg",  
+        texture => {  
+          texture.colorSpace = THREE.SRGBColorSpace;  
+          texture.anisotropy = Math.min(  
+            8, renderer.capabilities.getMaxAnisotropy()  
+          );  
+          earthMaterial.map = texture;  
+          earthMaterial.color.set(0xffffff);  
+          earthMaterial.needsUpdate = true;  
+          status.hidden = true;  
+        },  
+        undefined,  
+        () => {  
+          status.textContent =  
+            "Earth texture unavailable. Check your connection and reload.";  
+        }  
+      );  
+  
+      loader.load(  
+        textureRoot + "earth_specular_2048.jpg",  
+        texture => {  
+          earthMaterial.specularMap = texture;  
+          earthMaterial.needsUpdate = true;  
+        },  
+        undefined,  
+        () => {} // The globe still works without the optional specular map.  
+      );  
+  
+      // A transparent Fresnel shell creates a soft blue atmospheric rim.  
+      const atmosphere = new THREE.Mesh(  
+        new THREE.SphereGeometry(1.035, 96, 64),  
+        new THREE.ShaderMaterial({  
+          vertexShader: `  
+            varying vec3 vNormal;  
+            varying vec3 vViewDirection;  
+  
+            void main() {  
+              vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);  
+              vNormal = normalize(normalMatrix * normal);  
+              vViewDirection = -viewPosition.xyz;  
+              gl_Position = projectionMatrix * viewPosition;  
+            }  
+          `,  
+          fragmentShader: `  
+            varying vec3 vNormal;  
+            varying vec3 vViewDirection;  
+  
+            void main() {  
+              float facing = max(  
+                dot(normalize(vNormal), normalize(vViewDirection)), 0.0  
+              );  
+              float glow = pow(1.0 - facing, 3.5);  
+              gl_FragColor = vec4(0.15, 0.5, 1.0, glow * 0.65);  
+            }  
+          `,  
+          transparent: true,  
+          blending: THREE.AdditiveBlending,  
+          depthWrite: false  
+        })  
+      );  
+      planet.add(atmosphere);  
+  
+      // Distribute stars uniformly around the scene.  
+      const starCount = 2200;  
+      const positions = new Float32Array(starCount * 3);  
+      const colors = new Float32Array(starCount * 3);  
+      const color = new THREE.Color();  
+  
+      for (let i = 0; i < starCount; i++) {  
+        const radius = 60 + Math.random() * 50;  
+        const azimuth = Math.random() * Math.PI * 2;  
+        const vertical = Math.random() * 2 - 1;  
+        const horizontal = Math.sqrt(1 - vertical * vertical);  
+  
+        positions[i * 3] = radius * horizontal * Math.cos(azimuth);  
+        positions[i * 3 + 1] = radius * vertical;  
+        positions[i * 3 + 2] = radius * horizontal * Math.sin(azimuth);  
+  
+        color.setHSL(  
+          0.55 + Math.random() * 0.12,  
+          0.1 + Math.random() * 0.3,  
+          0.45 + Math.random() * 0.45  
+        );  
+        color.toArray(colors, i * 3);  
+      }  
+  
+      const starGeometry = new THREE.BufferGeometry();  
+      starGeometry.setAttribute(  
+        "position", new THREE.BufferAttribute(positions, 3)  
+      );  
+      starGeometry.setAttribute(  
+        "color", new THREE.BufferAttribute(colors, 3)  
+      );  
+  
+      const starCanvas = document.createElement("canvas");  
+      starCanvas.width = starCanvas.height = 32;  
+      const ctx = starCanvas.getContext("2d");  
+      const glow = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);  
+      glow.addColorStop(0, "rgba(255,255,255,1)");  
+      glow.addColorStop(0.2, "rgba(255,255,255,0.85)");  
+      glow.addColorStop(1, "rgba(255,255,255,0)");  
+      ctx.fillStyle = glow;  
+      ctx.fillRect(0, 0, 32, 32);  
+  
+      const stars = new THREE.Points(  
+        starGeometry,  
+        new THREE.PointsMaterial({  
+          size: 0.3,  
+          map: new THREE.CanvasTexture(starCanvas),  
+          vertexColors: true,  
+          transparent: true,  
+          opacity: 0.85,  
+          depthWrite: false,  
+          blending: THREE.AdditiveBlending  
+        })  
+      );  
+      scene.add(stars);  
+  
+      let rotating = !matchMedia("(prefers-reduced-motion: reduce)").matches;  
+      let speed = 1;  
+      const rotationButton = document.querySelector("#rotation");  
+  
+      function updateRotationButton() {  
+        rotationButton.querySelector("span").textContent =  
+          rotating ? "Pause" : "Play";  
+        rotationButton.setAttribute(  
+          "aria-label", rotating ? "Pause rotation" : "Start rotation"  
+        );  
+        rotationButton.querySelector("path").setAttribute(  
+          "d",  
+          rotating ? "M5 4h3v12H5zm7 0h3v12h-3z" : "M6 3l11 7-11 7z"  
+        );  
+      }  
+  
+      updateRotationButton();  
+  
+      rotationButton.addEventListener("click", () => {  
+        rotating = !rotating;  
+        updateRotationButton();  
+      });  
+  
+      document.querySelector("#speed").addEventListener("input", event => {  
+        speed = Number(event.target.value);  
+        document.querySelector("#speed-value").value = `${speed}×`;  
+      });  
+  
+      function resetView() {  
+        // Recreating controls is unnecessary; reset also clears damping motion.  
+        controls.target0.set(0, 0, 0);  
+        controls.position0.set(0, 0.15, homeDistance);  
+        controls.zoom0 = 1;  
+        controls.reset();  
+      }  
+  
+      document.querySelector("#reset").addEventListener("click", resetView);  
+  
+      renderer.domElement.addEventListener("keydown", event => {  
+        if (event.code === "Space") {  
+          event.preventDefault();  
+          rotationButton.click();  
+        }  
+        if (event.key.toLowerCase() === "r") resetView();  
+      });  
+  
+      window.addEventListener("resize", () => {  
+        camera.aspect = innerWidth / innerHeight;  
+        camera.updateProjectionMatrix();  
+  
+        const newDistance = fittedDistance();  
+  
+        // Preserve the user's relative zoom and pan across viewport changes.  
+        camera.position.sub(controls.target)  
+          .multiplyScalar(newDistance / homeDistance)  
+          .add(controls.target);  
+  
+        homeDistance = newDistance;  
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));  
+        renderer.setSize(innerWidth, innerHeight);  
+        controls.update();  
+      });  
+  
+      renderer.domElement.addEventListener("webglcontextlost", event => {  
+        event.preventDefault();  
+        status.hidden = false;  
+        status.textContent = "Graphics context lost. Please reload the page.";  
+      });  
+  
+      const clock = new THREE.Clock();  
+  
+      renderer.setAnimationLoop(() => {  
+        const delta = Math.min(clock.getDelta(), 0.05);  
+  
+        if (rotating) earth.rotation.y += delta * 0.075 * speed;  
+  
+        controls.update();  
+        renderer.render(scene, camera);  
+      });  
+    } catch (error) {  
+      console.error(error);  
+      status.hidden = false;  
+      status.textContent =  
+        "Unable to start the 3D viewer. Check your connection and WebGL support.";  
+    }  
+  </script>  
+</body>  
+</html>  
