@@ -293,6 +293,43 @@
 					linear-gradient(#b7d9e8 0 57%, #89aaa0 58% 100%);
 			}
 
+			.railway {
+				background:
+					linear-gradient(
+						174deg,
+						transparent 0 67%,
+						#493c2c 68% 70%,
+						transparent 71%
+					),
+					linear-gradient(
+						6deg,
+						transparent 0 67%,
+						#493c2c 68% 70%,
+						transparent 71%
+					),
+					repeating-linear-gradient(
+							90deg,
+							transparent 0 17px,
+							#9a7950 18px 21px,
+							transparent 22px 31px
+						)
+						50% 82% / 100% 30% no-repeat,
+					linear-gradient(
+							90deg,
+							transparent 0 26%,
+							#263b35 27% 31%,
+							transparent 32% 68%,
+							#263b35 69% 73%,
+							transparent 74%
+						)
+						50% 47% / 78% 45% no-repeat,
+					linear-gradient(
+						#c8d8d3 0 48%,
+						#728a66 49% 67%,
+						#344b3b 68%
+					);
+			}
+
 			.card-copy {
 				position: absolute;
 				inset: auto 0 0;
@@ -410,9 +447,9 @@
 			<header>
 				<div>
 					<p class="eyebrow">Interactive collection / 2026</p>
-					<h1>Eight worlds.<br />One browser.</h1>
+					<h1>Nine worlds.<br />One browser.</h1>
 				</div>
-				<p class="count">08 experiments<br />WebGL + Canvas</p>
+				<p class="count">09 experiments<br />WebGL + Canvas</p>
 			</header>
 
 			<section class="grid" aria-label="Web app collection">
@@ -502,6 +539,17 @@
 						<div>
 							<p class="card-number">08 / Alpine</p>
 							<h2>Neuschwanstein Castle</h2>
+						</div>
+						<span class="open" aria-hidden="true">↗</span>
+					</div>
+				</a>
+
+				<a class="card" href="train/train.html">
+					<div class="visual railway" aria-hidden="true"></div>
+					<div class="card-copy">
+						<div>
+							<p class="card-number">09 / Woodland</p>
+							<h2>Model Railway</h2>
 						</div>
 						<span class="open" aria-hidden="true">↗</span>
 					</div>
